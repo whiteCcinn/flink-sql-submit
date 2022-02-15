@@ -258,3 +258,124 @@ for i in $(find /data/flink-stream/mstream_alarm/ -type f -name "*.sql");do /dat
 # 每小时检测一下application是否挂了
 0 * * * * bash /data/flink-stream/flink-stream-sql-mctl monitor >/dev/null 2>&1
 ```
+
+## 利用docker打包jar包
+
+### 打包所有jar
+
+```shell
+docker run --rm -it -v  ~/.m2:/root/.m2 -v $(PWD):/www -w /www maven:3.6.3 mvn clean package
+```
+
+### 打包特定的jar包
+
+```xml
+<plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-jar-plugin</artifactId>
+      <version>2.4</version><!--$NO-MVN-MAN-VER$-->
+      <executions>
+          <!-- Default Execution -->
+          <execution>
+              <id>default</id>
+              <phase>package</phase>
+              <goals>
+                  <goal>test-jar</goal>
+              </goals>
+          </execution>
+
+          <!-- 自定义序列化 -->
+          <execution>
+              <id>eventSerializer</id>
+              <phase>package</phase>
+              <goals>
+                  <goal>jar</goal>
+              </goals>
+              <configuration>
+                  <classifier>EventSerializer</classifier>
+
+                  <archive>
+                      <manifestEntries>
+                          <program-class>org.client.flink.serializer.log_role_create.LogRoleCreateDeSerializer</program-class>
+                      </manifestEntries>
+                      <manifest>
+                          <addClasspath>true</addClasspath>
+                          <classpathPrefix>${project.build.directory}/dependency</classpathPrefix>
+                      </manifest>
+                  </archive>
+
+                  <includes>
+                      <include>org/client/flink/serializer/*/*.class</include>
+                      <include>org/client/flink/serializer/*.class</include>
+                      <include>org/client/flink/events/*/*.class</include>
+                      <include>org/client/flink/events/*.class</include>
+                      <include>META-INF/LICENSE</include>
+                      <include>META-INF/NOTICE</include>
+                  </includes>
+              </configuration>
+          </execution>
+
+      </executions>
+  </plugin>
+```
+
+### 打包指定jar，但是名称是统一的。没进行特殊化处理。
+
+```shell
+➜  flinkjob git:(master) ✗ docker run --rm -it -v  ~/.m2:/root/.m2 -v $(PWD):/www -w /www maven:3.6.3 mvn jar:jar@eventSerializer
+[INFO] Scanning for projects...
+[INFO]
+[INFO] --------------------< org.client.flink:flinkjob >---------------------
+[INFO] Building All client Flink job 1.0-SNAPSHOT
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- maven-jar-plugin:2.4:jar (EventSerializer) @ flinkjob ---
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.931 s
+[INFO] Finished at: 2021-10-26T03:08:07Z
+[INFO] ------------------------------------------------------------------------
+```
+
+### 指定最终的jar名称，这个全指定，没有任何的复用可言
+
+```shell
+➜  flinkjob git:(master) ✗ docker run --rm -it -v  ~/.m2:/root/.m2 -v $(PWD):/www -w /www maven:3.6.3 mvn jar:jar@eventSerializer -Djar.finalName=flinkjob-1.0-SNAPSHOT-Event
+[INFO] Scanning for projects...
+[INFO]
+[INFO] --------------------< org.client.flink:flinkjob >---------------------
+[INFO] Building All client Flink job 1.0-SNAPSHOT
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- maven-jar-plugin:2.4:jar (eventSerializer) @ flinkjob ---
+[INFO] Building jar: /www/target/flinkjob-1.0-SNAPSHOT-Event.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  8.630 s
+[INFO] Finished at: 2021-10-26T03:19:24Z
+[INFO] ------------------------------------------------------------------------
+```
+
+### 需要根据现有的规则打包指定的jar
+
+> 指定打包eventSerializer的jar，生成了对应的：mc-flinkjob-1.0-SNAPSHOT-eventSerializer.jar
+
+```shell
+➜  flinkjob git:(master) ✗ EXECUTE_ID=eventSerializer;BUILD_NAME=`docker run --rm -it -v  ~/.m2:/root/.m2 -v $(PWD):/www -w /www maven:3.6.3  mvn help:evaluate -Dexpression=project.build.finalName | egrep -v "^\[" | sed 's/^M//g'`;docker run --rm -it -v  ~/.m2:/root/.m2 -v $(PWD):/www -w /www maven:3.6.3 mvn jar:jar@${EXECUTE_ID} -Djar.finalName=${BUILD_NAME}-${EXECUTE_ID}
+[INFO] Scanning for projects...
+[INFO]
+[INFO] --------------------< org.client.flink:flinkjob >---------------------
+[INFO] Building All client Flink job 1.0-SNAPSHOT
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- maven-jar-plugin:2.4:jar (eventSerializer) @ flinkjob ---
+[INFO] Building jar: /www/target/mc-flinkjob-1.0-SNAPSHOT-eventSerializer.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  8.550 s
+[INFO] Finished at: 2021-10-26T06:09:54Z
+[INFO] ------------------------------------------------------------------------
+```
